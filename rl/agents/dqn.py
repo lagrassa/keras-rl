@@ -1,4 +1,5 @@
 from __future__ import division
+import pdb
 import warnings
 
 import keras.backend as K
@@ -60,13 +61,18 @@ class AbstractDQNAgent(Agent):
         return self.processor.process_state_batch(batch)
 
     def compute_batch_q_values(self, state_batch):
-        batch = self.process_state_batch(state_batch)
-        q_values = self.model.predict_on_batch(batch)
+        state_batch_first = state_batch[0][0] #lagrassa
+        grid, robot = self.process_state_batch(state_batch_first)
+        #lagrassa: takes the list and separates
+        batch_list =[np.array([grid]), np.array([robot])]
+        q_values = self.model.predict_on_batch(batch_list)
+         
         assert q_values.shape == (len(state_batch), self.nb_actions)
         return q_values
 
     def compute_q_values(self, state):
         q_values = self.compute_batch_q_values([state]).flatten()
+        
         assert q_values.shape == (self.nb_actions,)
         return q_values
 
@@ -266,7 +272,6 @@ class DQNAgent(AbstractDQNAgent):
                 reward_batch.append(e.reward)
                 action_batch.append(e.action)
                 terminal1_batch.append(0. if e.terminal1 else 1.)
-
             # Prepare and validate parameters.
             state0_batch = self.process_state_batch(state0_batch)
             state1_batch = self.process_state_batch(state1_batch)
@@ -295,7 +300,23 @@ class DQNAgent(AbstractDQNAgent):
                 # Compute the q_values given state1, and extract the maximum for each sample in the batch.
                 # We perform this prediction on the target_model instead of the model for reasons
                 # outlined in Mnih (2015). In short: it makes the algorithm more stable.
-                target_q_values = self.target_model.predict_on_batch(state1_batch)
+                #take the 0th, 2th and 3th dimension but leave the 1th
+                #assumption: each of the samples is the same dimensions 
+                
+                window_size = state1_batch.shape[0][0]
+                grid_shape = state1_batch[:,0][0].shape
+                adjusted_batch_grid = np.zeros((window_size,)+ grid_shape)
+                aux_shape = state1_batch[:,1][0].shape
+                adjusted_batch_aux = np.zeros((window_size,)+ aux_shape)
+                for j in range(self.batch_size): 
+                    for i in range(window_size):
+                        adjusted_batch_grid[i] =  state1_batch[:,0][i]
+                        adjusted_batch_aux[i] =  state1_batch[:,1][i]
+           
+                   
+                batch_list = [adjusted_batch_grid, adjusted_batch_aux]
+                target_q_values = self.target_model.predict_on_batch(batch_list)
+                pdb.set_trace()
                 assert target_q_values.shape == (self.batch_size, self.nb_actions)
                 q_batch = np.max(target_q_values, axis=1).flatten()
             assert q_batch.shape == (self.batch_size,)
@@ -321,7 +342,8 @@ class DQNAgent(AbstractDQNAgent):
             # Finally, perform a single update on the entire batch. We use a dummy target since
             # the actual loss is computed in a Lambda layer that needs more complex input. However,
             # it is still useful to know the actual target to compute metrics properly.
-            ins = [state0_batch] if type(self.model.input) is not list else state0_batch
+            adjusted_batch0 = state0_batch[:,0,:,:]
+            ins = [adjusted_batch0] if type(self.model.input) is not list else adjusted_batch0
             metrics = self.trainable_model.train_on_batch(ins + [targets, masks], [dummy_targets, targets])
             metrics = [metric for idx, metric in enumerate(metrics) if idx not in (1, 2)]  # throw away individual losses
             metrics += self.policy.metrics
