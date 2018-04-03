@@ -302,22 +302,29 @@ class DQNAgent(AbstractDQNAgent):
                 # outlined in Mnih (2015). In short: it makes the algorithm more stable.
                 #take the 0th, 2th and 3th dimension but leave the 1th
                 #assumption: each of the samples is the same dimensions 
-                pdb.set_trace() 
                 window_size = state1_batch.shape[1]
-                grid_shape = state1_batch[:,0][0].shape
-                adjusted_batch_grid = np.zeros((window_size,)+ grid_shape)
-                aux_shape = state1_batch[:,1][0].shape
-                adjusted_batch_aux = np.zeros((window_size,)+ aux_shape)
-                batch_list = []
+                grid_shape = state1_batch[0][:,0][0].shape
+                aux_shape = state1_batch[0][:,1][0].shape
+                grid_batch_list = []
+                aux_batch_list = []
                 for j in range(self.batch_size): 
+                    adjusted_batch_grid = np.zeros((window_size,)+ grid_shape)
+                    adjusted_batch_aux = np.zeros((window_size,)+ aux_shape)
                     for i in range(window_size):
                         adjusted_batch_grid[i] =  state1_batch[j][:,0][i]
                         adjusted_batch_aux[i] =  state1_batch[j][:,1][i]
-                    sub_batch_list = [adjusted_batch_grid, adjusted_batch_aux]
-                    batch_list.append(sub_batch_list)
+                    grid_batch_list.append(adjusted_batch_grid)
+                    aux_batch_list.append(adjusted_batch_aux)
+                #convert to numpy arrays 
+                grid_batch_list = np.array(grid_batch_list)
+                aux_batch_list = np.array(aux_batch_list)
+                target_q_values = [] 
+                for i in range(self.batch_size):
+                    pred = self.target_model.predict_on_batch([grid_batch_list[i], aux_batch_list[i]])
+                    target_q_values.append(np.reshape(pred,4))
 
-                target_q_values = self.target_model.predict_on_batch(batch_list)
-                pdb.set_trace()
+                target_q_values = np.array(target_q_values)
+
                 assert target_q_values.shape == (self.batch_size, self.nb_actions)
                 q_batch = np.max(target_q_values, axis=1).flatten()
             assert q_batch.shape == (self.batch_size,)
@@ -332,18 +339,21 @@ class DQNAgent(AbstractDQNAgent):
             # Set discounted reward to zero for all states that were terminal.
             discounted_reward_batch *= terminal1_batch
             assert discounted_reward_batch.shape == reward_batch.shape
+        
             Rs = reward_batch + discounted_reward_batch
             for idx, (target, mask, R, action) in enumerate(zip(targets, masks, Rs, action_batch)):
                 target[action] = R  # update action with estimated accumulated reward
                 dummy_targets[idx] = R
                 mask[action] = 1.  # enable loss for this specific action
+                #pdb.set_trace()
             targets = np.array(targets).astype('float32')
+            pdb.set_trace()
             masks = np.array(masks).astype('float32')
 
             # Finally, perform a single update on the entire batch. We use a dummy target since
             # the actual loss is computed in a Lambda layer that needs more complex input. However,
             # it is still useful to know the actual target to compute metrics properly.
-            adjusted_batch0 = state0_batch[:,0,:,:]
+            adjusted_batch0 = state0_batch[:,0,:].T
             ins = [adjusted_batch0] if type(self.model.input) is not list else adjusted_batch0
             metrics = self.trainable_model.train_on_batch(ins + [targets, masks], [dummy_targets, targets])
             metrics = [metric for idx, metric in enumerate(metrics) if idx not in (1, 2)]  # throw away individual losses
