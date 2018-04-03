@@ -302,19 +302,20 @@ class DQNAgent(AbstractDQNAgent):
                 # outlined in Mnih (2015). In short: it makes the algorithm more stable.
                 #take the 0th, 2th and 3th dimension but leave the 1th
                 #assumption: each of the samples is the same dimensions 
-                
-                window_size = state1_batch.shape[0][0]
+                pdb.set_trace() 
+                window_size = state1_batch.shape[1]
                 grid_shape = state1_batch[:,0][0].shape
                 adjusted_batch_grid = np.zeros((window_size,)+ grid_shape)
                 aux_shape = state1_batch[:,1][0].shape
                 adjusted_batch_aux = np.zeros((window_size,)+ aux_shape)
+                batch_list = []
                 for j in range(self.batch_size): 
                     for i in range(window_size):
-                        adjusted_batch_grid[i] =  state1_batch[:,0][i]
-                        adjusted_batch_aux[i] =  state1_batch[:,1][i]
-           
-                   
-                batch_list = [adjusted_batch_grid, adjusted_batch_aux]
+                        adjusted_batch_grid[i] =  state1_batch[j][:,0][i]
+                        adjusted_batch_aux[i] =  state1_batch[j][:,1][i]
+                    sub_batch_list = [adjusted_batch_grid, adjusted_batch_aux]
+                    batch_list.append(sub_batch_list)
+
                 target_q_values = self.target_model.predict_on_batch(batch_list)
                 pdb.set_trace()
                 assert target_q_values.shape == (self.batch_size, self.nb_actions)
